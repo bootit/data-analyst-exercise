@@ -1,0 +1,186 @@
+--Create Continent Table 
+CREATE TABLE public.continent
+(
+    continent_code character(255) COLLATE pg_catalog."default",
+    contintent_name character(255) COLLATE pg_catalog."default"
+)
+
+ --Create Contient Map Table 
+    
+    CREATE TABLE public.continent_map
+(
+    "Country_Code" character(255) COLLATE pg_catalog."default",
+    "Continent_Code" character(255) COLLATE pg_catalog."default"
+)
+
+   
+ --Create Countries Table
+CREATE TABLE public.countries
+(
+    country_code character(255) COLLATE pg_catalog."default",
+    country_name character(255) COLLATE pg_catalog."default"
+)
+
+
+ --Create Per Capita Table
+    CREATE TABLE public.per_capita
+(
+    country_code character(255) COLLATE pg_catalog."default",
+    year integer,
+    gdp_per_capita numeric
+)
+
+
+--1. Alphabetically list all the country codes in the continent 
+--map table that appear more than once. For countries with no 
+--country code make them display as "N/A" and display them first in the list.
+
+select * from 
+(
+select
+COUNT(*) as Country_Code_Cnt,
+continent_map."Country_Code",
+case when continent_map."Country_Code" is null then 'N/A'
+else continent_map."Country_Code" end as "Country_Code_upt"
+from public.continent_map
+
+Group By
+continent_map."Country_Code"
+HAVING COUNT(*) > 1
+	)J 
+ ORDER BY ("Country_Code_upt" = 'N/A') DESC, "Country_Code_upt" ASC
+
+
+
+
+--2.List the Top 10 Countries by year over year % GDP per capita growth between 2011 & 2012.
+
+--% year over year growth is defined as- (GDP Per Capita in 2012 - GDP Per Capita in 2011) / (GDP Per Capita in 2011)
+
+--The final product should include columns for:
+
+--Rank
+--Country Name
+--Country Code
+--Continent
+--Growth Percent
+
+select 
+DENSE_RANK() OVER (ORDER BY Growth_Percent desc)AS Rank,
+"country_name",
+"Country_Code",
+"contintent_name",
+Growth_Percent
+from 
+(
+select
+continent."contintent_name",
+continent_map."Country_Code",
+countries."country_name",
+SUM(CASE WHEN year = 2011 THEN gdp_per_capita ELSE 0 END) AS cy_gdp_per_capita, --Case statement to Pivot table by yr for easier calculation
+SUM(CASE WHEN year = 2012 THEN gdp_per_capita ELSE 0 END) AS py_gdp_per_capita,--Case statement to Pivot table by yr for easier calcualation
+(SUM(CASE WHEN year = 2012 THEN gdp_per_capita ELSE null END) - SUM(CASE WHEN year = 2011 THEN gdp_per_capita ELSE null END))/  SUM(CASE WHEN year = 2011 THEN gdp_per_capita ELSE null END) as Growth_Percent	
+from public.continent
+left outer join public.continent_map on public.continent.continent_code= public.continent_map."Continent_Code"
+left outer join public.countries on public.continent_map."Country_Code" = public.countries.country_code
+left outer join public.per_capita on public.countries.country_code = public.per_capita.country_code
+where 	per_capita."year" in ('2011', '2012')
+Group By
+continent."contintent_name",
+continent_map."Country_Code",
+countries."country_name"
+)J
+where Growth_Percent is not null
+order by 5 desc limit 10
+
+--3.For the year 2012, compare the percentage share of GDP Per Capita for the following regions: North America (NA), Europe (EU), and the Rest of the World. Your result should look something like:
+
+--North America	Europe	Rest of the World
+--X%	             Y%           	Z%
+
+
+select
+SUM(CASE WHEN "contintent_name" = 'North America' THEN gdp_per_capita ELSE 0 END)/ SUM(gdp_per_capita) as North_America,
+SUM(CASE WHEN "contintent_name" = 'Europe' THEN gdp_per_capita ELSE 0 END)/SUM(gdp_per_capita) as Europe,
+SUM(CASE WHEN "contintent_name" NOT IN ('North America', 'Europe') THEN gdp_per_capita ELSE 0 END)/ SUM(gdp_per_capita) as Rest_of_the_world
+from public.continent
+left outer join public.continent_map on public.continent.continent_code= public.continent_map."Continent_Code"
+left outer join public.countries on public.continent_map."Country_Code" = public.countries.country_code
+left outer join public.per_capita on public.countries.country_code = public.per_capita.country_code
+where per_capita."year" in ('2012')
+
+					   
+
+--4.For years 2004 through 2012, calculate the average GDP Per Capita for every continent for every year.
+ --The average in this case is defined as the
+ --Sum of GDP Per Capita for All Countries in the Continent / Number of Countries in the Continent
+
+--The final product should include columns for:
+
+--Year
+--Continent
+--Average GDP Per Capita
+
+select distinct
+"year", 
+"contintent_name",
+round(Average_GDP_Per_Capita,2)
+from 
+(
+select
+per_capita."year",
+continent."contintent_name",
+countries."country_name", 
+gdp_per_capita,
+sum(gdp_per_capita) OVER(PARTITION BY year, contintent_name) AS Country_Sum,
+count(country_name) OVER(PARTITION BY year,contintent_name) AS Country_Cnt,
+sum(gdp_per_capita) OVER(PARTITION BY year, contintent_name)/count(country_name) OVER(PARTITION BY year,contintent_name) AS Average_GDP_Per_Capita 
+ SUM(CASE WHEN year = 2011 THEN gdp_per_capita ELSE null END) as Growth_Percent	
+from public.continent
+left outer join public.continent_map on public.continent.continent_code= public.continent_map."Continent_Code"
+left outer join public.countries on public.continent_map."Country_Code" = public.countries.country_code
+left outer join public.per_capita on public.countries.country_code = public.per_capita.country_code
+where 	per_capita."year" between  '2004' and '2012'
+
+	)J
+order by 1,2,3
+					   
+
+--5.For years 2004 through 2012, calculate the median GDP Per Capita for every continent for every year. The median in this case is defined as The value at which half of the samples for a continent are higher and half are lower
+
+--The final product should include columns for:
+
+--Year
+--Continent
+--Median GDP Per Capita
+
+
+SELECT DISTINCT
+year,
+contintent_name,
+AVG(round(gdp_per_capita,2)) AS "Median GDP Per Capita" -- Avg if there are two median values 
+
+FROM   
+(
+	SELECT
+ Year, 
+ continent."contintent_name",
+ country_name,
+ gdp_per_capita,
+ ROW_NUMBER() OVER ( PARTITION BY year, contintent_name ORDER BY gdp_per_capita ASC) AS ROWASC, --sort asc to identify top half 
+ ROW_NUMBER() OVER ( PARTITION BY year, contintent_name ORDER BY gdp_per_capita DESC) AS ROWDESC --sort desc to identify bottom half
+ from public.continent
+left outer join public.continent_map on public.continent.continent_code= public.continent_map."Continent_Code"
+left outer join public.countries on public.continent_map."Country_Code" = public.countries.country_code
+left outer join public.per_capita on public.countries.country_code = public.per_capita.country_code
+where per_capita."year" between  '2004' and '2012'
+and gdp_per_capita is not null
+) J
+WHERE  ROWASC IN ( ROWDESC, ROWDESC - 1, ROWDESC + 1 ) 
+group by 
+year,
+contintent_name
+
+
+					   
+
